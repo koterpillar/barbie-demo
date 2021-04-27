@@ -1,26 +1,28 @@
-{-# LANGUAGE DeriveGeneric     #-}
-{-# LANGUAGE DerivingVia       #-}
-{-# LANGUAGE Haskell2010       #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE Haskell2010 #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RecordWildCards   #-}
-{-# LANGUAGE TemplateHaskell   #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 module Main where
 
-import           Control.Lens
+import Control.Lens
 
-import           Control.Monad  (when)
+import Control.Monad (when)
 
-import           Data.Monoid    (Last (..))
+import Data.Monoid (Last(..))
 
-import           Data.Text      (Text)
-import qualified Data.Text.IO   as Text
-import           Data.Text.Lens (unpacked)
+import Data.Text (Text)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+import Data.Text.Lens (unpacked)
 
-import           Generic.Data   (Generic, Generically (..))
+import Generic.Data (Generic, Generically(..))
 
-import           System.Exit    (die)
-import           System.IO      (IOMode (..), hGetContents, withFile)
+import System.Environment (getArgs)
+import System.Exit (die)
+import System.IO (IOMode(..), hGetContents, withFile)
 
 data LogLevel
   = Quiet
@@ -31,7 +33,7 @@ data LogLevel
 data Config =
   Config
     { _logLevel :: LogLevel
-    , _file     :: Text
+    , _file :: Text
     }
 
 makeLenses ''Config
@@ -39,7 +41,7 @@ makeLenses ''Config
 data PartialConfig =
   PartialConfig
     { _plogLevel :: Last LogLevel
-    , _pfile     :: Last Text
+    , _pfile :: Last Text
     }
   deriving (Generic)
   deriving Semigroup via (Generically PartialConfig)
@@ -53,6 +55,14 @@ mkLast = Last . Just
 defaultConfig :: PartialConfig
 defaultConfig = mempty & plogLevel .~ mkLast Normal
 
+commandLineConfig :: IO PartialConfig
+commandLineConfig = go mempty <$> getArgs
+  where
+    go c [] = c
+    go c ("--quiet":args) = go (c & plogLevel .~ mkLast Quiet) args
+    go c ("--verbose":args) = go (c & plogLevel .~ mkLast Verbose) args
+    go c ("--file":file:args) = go (c & pfile .~ mkLast (Text.pack file)) args
+
 fromPartialConfig :: PartialConfig -> Maybe Config
 fromPartialConfig PartialConfig {..} =
   getLast $ do
@@ -62,10 +72,12 @@ fromPartialConfig PartialConfig {..} =
 
 main :: IO ()
 main = do
-  let config' = defaultConfig
+  let config1 = defaultConfig
+  config2 <- commandLineConfig
+  let config' = config1 <> config2
   case fromPartialConfig config' of
     Just config -> act config
-    Nothing     -> die "No configuration"
+    Nothing -> die "No configuration"
 
 log_ :: Config -> LogLevel -> Text -> IO ()
 log_ config level message =
