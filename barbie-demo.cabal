@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: ff8a7f4acb257e1914fdab5fec2d14ed3f0b414ad0b5c742fdc64b8c87ddfcdb
+-- hash: 5e59c44f5d2de331a3b64bcd6b91f34e6b5a54e56054385c47573073ae63fc75
 
 name:           barbie-demo
 version:        0.1.0.0
@@ -34,4 +34,6 @@ executable barbie-demo-exe
   build-depends:
       barbies
     , base >=4.7 && <5
+    , lens
+    , text
   default-language: Haskell2010
