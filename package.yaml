@@ -24,5 +24,6 @@ executables:
     - -with-rtsopts=-N
     dependencies:
     - barbies
+    - generic-data
     - lens
     - text

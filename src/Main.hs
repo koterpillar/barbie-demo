@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveGeneric     #-}
+{-# LANGUAGE DerivingVia       #-}
 {-# LANGUAGE Haskell2010       #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards   #-}
@@ -9,9 +11,13 @@ import           Control.Lens
 
 import           Control.Monad  (when)
 
+import           Data.Monoid    (Last (..))
+
 import           Data.Text      (Text)
 import qualified Data.Text.IO   as Text
 import           Data.Text.Lens (unpacked)
+
+import           Generic.Data   (Generic, Generically (..))
 
 import           System.Exit    (die)
 import           System.IO      (IOMode (..), hGetContents, withFile)
@@ -32,18 +38,27 @@ makeLenses ''Config
 
 data PartialConfig =
   PartialConfig
-    { _plogLevel :: Maybe LogLevel
-    , _pfile     :: Maybe Text
+    { _plogLevel :: Last LogLevel
+    , _pfile     :: Last Text
     }
+  deriving (Generic)
+  deriving Semigroup via (Generically PartialConfig)
+  deriving Monoid via (Generically PartialConfig)
 
-fromPartialConfig :: PartialConfig -> Maybe Config
-fromPartialConfig PartialConfig {..} = do
-  _logLevel <- _plogLevel
-  _file <- _pfile
-  pure Config {..}
+makeLenses ''PartialConfig
+
+mkLast :: a -> Last a
+mkLast = Last . Just
 
 defaultConfig :: PartialConfig
-defaultConfig = PartialConfig {_plogLevel = Just Normal, _pfile = Nothing}
+defaultConfig = mempty & plogLevel .~ mkLast Normal
+
+fromPartialConfig :: PartialConfig -> Maybe Config
+fromPartialConfig PartialConfig {..} =
+  getLast $ do
+    _logLevel <- _plogLevel
+    _file <- _pfile
+    pure Config {..}
 
 main :: IO ()
 main = do
