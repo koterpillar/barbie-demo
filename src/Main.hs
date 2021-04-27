@@ -1,5 +1,6 @@
 {-# LANGUAGE Haskell2010       #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards   #-}
 {-# LANGUAGE TemplateHaskell   #-}
 
 module Main where
@@ -12,6 +13,7 @@ import           Data.Text      (Text)
 import qualified Data.Text.IO   as Text
 import           Data.Text.Lens (unpacked)
 
+import           System.Exit    (die)
 import           System.IO      (IOMode (..), hGetContents, withFile)
 
 data LogLevel
@@ -28,11 +30,27 @@ data Config =
 
 makeLenses ''Config
 
-defaultConfig :: Config
-defaultConfig = Config {_logLevel = Normal, _file = "test.txt"}
+data PartialConfig =
+  PartialConfig
+    { _plogLevel :: Maybe LogLevel
+    , _pfile     :: Maybe Text
+    }
+
+fromPartialConfig :: PartialConfig -> Maybe Config
+fromPartialConfig PartialConfig {..} = do
+  _logLevel <- _plogLevel
+  _file <- _pfile
+  pure Config {..}
+
+defaultConfig :: PartialConfig
+defaultConfig = PartialConfig {_plogLevel = Just Normal, _pfile = Nothing}
 
 main :: IO ()
-main = act defaultConfig
+main = do
+  let config' = defaultConfig
+  case fromPartialConfig config' of
+    Just config -> act config
+    Nothing     -> die "No configuration"
 
 log_ :: Config -> LogLevel -> Text -> IO ()
 log_ config level message =
