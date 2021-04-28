@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric        #-}
 {-# LANGUAGE DerivingVia          #-}
 {-# LANGUAGE FlexibleContexts     #-}
+{-# LANGUAGE GADTs                #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RecordWildCards      #-}
 {-# LANGUAGE StandaloneDeriving   #-}
@@ -16,6 +17,9 @@ import           Control.Lens
 
 import           Control.Monad      (when)
 
+import           Data.Map           (Map)
+import qualified Data.Map           as Map
+
 import           Data.Monoid        (Last (..))
 
 import           Data.Text          (Text)
@@ -23,9 +27,9 @@ import qualified Data.Text          as Text
 import qualified Data.Text.IO       as Text
 import           Data.Text.Lens     (unpacked)
 
-import           Generic.Data       (Generic, Generically (..))
+import           Generic.Data       (Generic, Generically (..), gcompare)
 
-import           System.Environment (getArgs)
+import           System.Environment (getArgs, lookupEnv)
 import           System.Exit        (die)
 import           System.IO          (IOMode (..), hGetContents, withFile)
 
@@ -35,11 +39,27 @@ l ?>~ t = set l (Last $ Just t)
 identity :: Lens (Identity a) (Identity b) a b
 identity f (Identity a) = Identity <$> f a
 
+data FromEnvironment a where
+  FromEnvironmentText :: String -> FromEnvironment Text
+  FromEnvironmentMap :: String -> Map String a -> FromEnvironment a
+
+fromEnvironment :: TraversableB b => b FromEnvironment -> IO (b Last)
+fromEnvironment = btraverse go
+  where
+    go :: FromEnvironment a -> IO (Last a)
+    go (FromEnvironmentText var) = fmap Text.pack <$> lastEnv var
+    go (FromEnvironmentMap var values) = (>>= (\a -> Last $ Map.lookup a values)) <$> lastEnv var
+    lastEnv :: String -> IO (Last String)
+    lastEnv var = Last <$> lookupEnv var
+
+fromPartial :: TraversableB b => b Last -> Maybe (b Identity)
+fromPartial = getLast . bsequence'
+
 data LogLevel
   = Quiet
   | Normal
   | Verbose
-  deriving (Ord, Eq)
+  deriving (Ord, Eq, Show)
 
 data Config' f =
   Config
@@ -75,15 +95,22 @@ commandLineConfig = go mempty <$> getArgs
     go c ("--verbose":args)  = go (c & logLevel ?>~ Verbose) args
     go c ("--file":arg:args) = go (c & file ?>~ Text.pack arg) args
 
-fromPartialConfig :: PartialConfig -> Maybe Config
-fromPartialConfig = getLast . bsequence'
+environmentConfig :: Config' FromEnvironment
+environmentConfig =
+  Config
+    { _logLevel =
+        FromEnvironmentMap "LOG_LEVEL" $
+        Map.fromList [("quiet", Quiet), ("verbose", Verbose)]
+    , _file = FromEnvironmentText "FILE"
+    }
 
 main :: IO ()
 main = do
   let config1 = defaultConfig
-  config2 <- commandLineConfig
-  let config' = config1 <> config2
-  case fromPartialConfig config' of
+  config2 <- fromEnvironment environmentConfig
+  config3 <- commandLineConfig
+  let config' = config1 <> config2 <> config3
+  case fromPartial config' of
     Just config -> act config
     Nothing     -> die "No configuration"
 
